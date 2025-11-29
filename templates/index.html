@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FaceMatch AI - Advanced Detection</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <header>
+        <h1>FaceMatch AI</h1>
+        <p class="subtitle">Upload a target face and a folder to find matches instantly.</p>
+    </header>
+
+    <div class="main-container">
+        <!-- Target Image Upload -->
+        <div class="upload-card">
+            <h3>Target Face</h3>
+            <div class="upload-area" id="target-area">
+                <div class="icon">👤</div>
+                <p>Click or Drag & Drop Target Image</p>
+                <input type="file" id="target-input" accept="image/*" hidden>
+            </div>
+            <img id="target-preview" class="preview-image" alt="Target Preview">
+        </div>
+
+        <!-- Folder Upload -->
+        <div class="upload-card">
+            <h3>Search Directory</h3>
+            <div class="upload-area" id="folder-area">
+                <div class="icon">📂</div>
+                <p>Click or Drag & Drop Folder</p>
+                <input type="file" id="folder-input" webkitdirectory directory multiple hidden>
+            </div>
+            <p id="folder-count" style="margin-top: 1rem; color: var(--success); display: none;">0 images selected</p>
+        </div>
+    </div>
+
+    <button id="scan-btn" class="btn" disabled>
+        Start Scanning <span class="loader"></span>
+    </button>
+
+    <div class="results-section">
+        <h2 style="margin-bottom: 1rem; display: none;" id="results-title">Matches Found</h2>
+        <div class="results-grid" id="results-grid">
+            <!-- Results will appear here -->
+        </div>
+    </div>
+
+    <script>
+        const targetArea = document.getElementById('target-area');
+        const targetInput = document.getElementById('target-input');
+        const targetPreview = document.getElementById('target-preview');
+        
+        const folderArea = document.getElementById('folder-area');
+        const folderInput = document.getElementById('folder-input');
+        const folderCount = document.getElementById('folder-count');
+        
+        const scanBtn = document.getElementById('scan-btn');
+        const loader = document.querySelector('.loader');
+        const resultsGrid = document.getElementById('results-grid');
+        const resultsTitle = document.getElementById('results-title');
+
+        // Target Image Handling
+        targetArea.addEventListener('click', () => targetInput.click());
+        targetInput.addEventListener('change', handleTargetSelect);
+
+        function handleTargetSelect(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    targetPreview.src = e.target.result;
+                    targetPreview.style.display = 'block';
+                    targetArea.style.display = 'none';
+                    checkReady();
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        // Folder Handling
+        folderArea.addEventListener('click', () => folderInput.click());
+        folderInput.addEventListener('change', handleFolderSelect);
+
+        function handleFolderSelect(e) {
+            const files = Array.from(e.target.files).filter(f => f.type.startsWith('image/'));
+            if (files.length > 0) {
+                folderCount.textContent = `${files.length} images selected`;
+                folderCount.style.display = 'block';
+                folderArea.querySelector('p').textContent = 'Folder Selected';
+                folderArea.style.borderColor = 'var(--success)';
+                checkReady();
+            }
+        }
+
+        function checkReady() {
+            if (targetInput.files.length > 0 && folderInput.files.length > 0) {
+                scanBtn.disabled = false;
+            }
+        }
+
+        // Scan Process
+        scanBtn.addEventListener('click', async () => {
+            if (scanBtn.disabled) return;
+
+            scanBtn.disabled = true;
+            loader.style.display = 'inline-block';
+            resultsGrid.innerHTML = '';
+            resultsTitle.style.display = 'none';
+
+            const formData = new FormData();
+            formData.append('target', targetInput.files[0]);
+            
+            const folderFiles = Array.from(folderInput.files).filter(f => f.type.startsWith('image/'));
+            folderFiles.forEach(file => {
+                formData.append('folder_images', file);
+            });
+
+            try {
+                const response = await fetch('/scan', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                
+                resultsTitle.style.display = 'block';
+                if (data.matches && data.matches.length > 0) {
+                    data.matches.forEach((match, index) => {
+                        const card = document.createElement('div');
+                        card.className = 'result-card';
+                        card.style.animationDelay = `${index * 0.1}s`;
+                        card.innerHTML = `
+                            <img src="${match.url}" alt="Match">
+                            <div class="result-info">
+                                <div class="match-score">Match Found</div>
+                                <small>${match.filename}</small>
+                            </div>
+                        `;
+                        resultsGrid.appendChild(card);
+                    });
+                } else {
+                    resultsGrid.innerHTML = '<p style="grid-column: 1/-1; text-align: center; color: var(--text-muted);">No matches found.</p>';
+                }
+
+            } catch (error) {
+                console.error('Error:', error);
+                alert('An error occurred during scanning.');
+            } finally {
+                scanBtn.disabled = false;
+                loader.style.display = 'none';
+            }
+        });
+
+        // Drag and Drop support (Basic)
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            targetArea.addEventListener(eventName, preventDefaults, false);
+            folderArea.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        targetArea.addEventListener('drop', (e) => {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            targetInput.files = files;
+            handleTargetSelect({target: {files: files}});
+        });
+        
+        // Folder drop is trickier, standard input handles it best usually
+    </script>
+</body>
+</html>
